@@ -417,21 +417,6 @@ const [chatInfo, setChatInfo] = useState(null); // { chatID, otherID }
                     />
                     <FaSearch className="search-icon" />
                   </div>
-                  
-                  <button 
-                    className={`filter-button ${filterActive ? 'active' : ''}`}
-                    onClick={toggleFilterMenu}
-                  >
-                    <FaFilter />
-                  </button>
-                  
-                  <button 
-                    className="refresh-button"
-                    onClick={() => fetchPatients()}
-                    title="Làm mới danh sách bệnh nhân"
-                  >
-                    <FaSyncAlt />
-                  </button>
                 </div>
                 
                 {filterActive && (

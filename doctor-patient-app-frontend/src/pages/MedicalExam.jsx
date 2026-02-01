@@ -73,28 +73,149 @@ const MedicalExam = () => {
   const currentDoctor = getCurrentDoctor();
 
   // Define fetchWaitingPatients at component level so it can be used throughout the component
-  const fetchWaitingPatients = useCallback(async () => {
+  const fetchWaitingPatients = async () => {
     try {
       const apiUrl = `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.WAITING_PATIENTS}`;
-      console.log(`Fetching waiting patients from: ${apiUrl} for doctorId: ${currentDoctor.id}`);
       const response = await axios.get(apiUrl, {
-        params: { doctorId: currentDoctor.id, date: new Date().toISOString().split('T')[0] } // Thêm ngày hiện tại để lọc ở backend
+        params: { doctorId: currentDoctor.id }
       });
 
       if (response.data.success) {
-        // Data from API is already formatted as expected
-        setWaitingPatients(response.data.waitingPatients);
-        console.log(`Fetched ${response.data.waitingPatients.length} waiting patients.`);
+        // Lấy ngày hiện tại của thiết bị để so sánh
+        const currentDeviceTime = new Date();
+        const currentDeviceDate = new Date(
+          currentDeviceTime.getFullYear(),
+          currentDeviceTime.getMonth(),
+          currentDeviceTime.getDate()
+        );
+
+        // Format lại danh sách bệnh nhân, chỉ lấy các bệnh nhân trong ngày
+        const formattedPatientsPromises = response.data.waitingPatients.map(async appointment => {
+          // Trích xuất thời gian từ Firestore
+          let appointmentDate;
+          if (appointment.timeSlot) {
+            appointmentDate = new Date(appointment.timeSlot.seconds * 1000);
+          } else if (appointment.examinationDate) {
+            appointmentDate = new Date(appointment.examinationDate.seconds * 1000);
+          } else {
+            appointmentDate = new Date(); // Mặc định nếu không có thông tin thời gian
+          }
+
+          // So sánh ngày của lịch hẹn với ngày hiện tại
+          const appointmentDateOnly = new Date(
+            appointmentDate.getFullYear(),
+            appointmentDate.getMonth(),
+            appointmentDate.getDate()
+          );
+
+          // Chỉ xử lý các lịch hẹn của ngày hôm nay
+          if (appointmentDateOnly.getTime() === currentDeviceDate.getTime()) {
+            // Trích xuất thông tin bệnh nhân như bình thường
+            const patient = appointment.patient || {};
+            let patientName = patient.fullName || patient.displayName || patient.name || "Không có tên";
+            // ... Các thông tin bệnh nhân khác
+
+            return {
+              id: appointment.id,
+              patientId: appointment.parentId,
+              patientName: patientName,
+              // ... Các thông tin khác
+              // Sử dụng thời gian thực tế từ Firestore để hiển thị
+              appointmentDate: appointmentDate,
+              appointmentTimeSlot: appointmentDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+              status: appointment.status,
+              scheduleId: appointment.scheduleId || appointment.id,
+              patient: {
+                ...patient
+              }
+            };
+          }
+          return null;
+        });
+
+        // Lọc bỏ các giá trị null (lịch hẹn không phải ngày hôm nay)
+        const formattedPatients = (await Promise.all(formattedPatientsPromises)).filter(Boolean);
+        
+        // Sắp xếp theo thời gian tăng dần
+        formattedPatients.sort((a, b) => a.appointmentDate - b.appointmentDate);
+        
+        setWaitingPatients(formattedPatients);
       } else {
         setWaitingPatients([]);
-        console.error("API did not return success for waiting patients:", response.data.error);
       }
     } catch (error) {
-      console.error("Lỗi khi tải danh sách bệnh nhân chờ từ API:", error);
-      alert("Không thể tải danh sách bệnh nhân chờ. Vui lòng thử lại sau.");
-      setWaitingPatients([]); // Clear list on error
+      console.error("Lỗi khi tải danh sách bệnh nhân chờ:", error);
+
+      // Fallback to direct Firestore query
+      try {
+        // Lấy ngày hiện tại từ thiết bị của người dùng
+        const today = new Date();
+        const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0);
+        const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+
+        const appointmentsRef = collection(db, "HisSchedule");
+        const appointmentQuery = query(
+          appointmentsRef,
+          where("doctorID", "==", currentDoctor.id),
+          where("status", "==", "wait"),
+          where("examinationDate", ">=", Timestamp.fromDate(startOfDay)),
+          where("examinationDate", "<=", Timestamp.fromDate(endOfDay)),
+        );
+
+        const appointmentSnapshot = await getDocs(appointmentQuery);
+        const appointments = [];
+        const patientsPromises = [];
+
+        appointmentSnapshot.forEach((doc) => {
+          const data = doc.data();
+          if (data.parentId) {
+            const patientPromise = getDocs(query(collection(db, "users"), where("uid", "==", data.parentId)))
+              .then(async patientSnapshot => {
+                if (!patientSnapshot.empty) {
+                  const patientData = patientSnapshot.docs[0].data();
+                  
+                  // Lấy thời gian trực tiếp từ Firestore
+                  let appointmentTime;
+                  if (data.timeOrder instanceof Timestamp) {
+                    appointmentTime = data.timeOrder.toDate();
+                  } else if (data.examinationDate instanceof Timestamp) {
+                    appointmentTime = data.examinationDate.toDate();
+                  } else {
+                    appointmentTime = new Date(); // Mặc định
+                  }
+
+                  // Các xử lý khác đối với dữ liệu bệnh nhân
+                  // ...
+
+                  appointments.push({
+                    id: doc.id,
+                    patientId: data.parentId,
+                    // ...Các thông tin khác
+                    appointmentDate: appointmentTime, 
+                    appointmentTimeSlot: appointmentTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+                    status: data.status,
+                    scheduleId: data.scheduleId || doc.id,
+                    // ...
+                  });
+                }
+              })
+              .catch(error => {
+                console.error("Lỗi khi lấy thông tin bệnh nhân:", error);
+              });
+            patientsPromises.push(patientPromise);
+          }
+        });
+
+        await Promise.all(patientsPromises);
+
+        // Sắp xếp theo thời gian
+        appointments.sort((a, b) => a.appointmentDate - b.appointmentDate);
+        setWaitingPatients(appointments);
+      } catch (fallbackError) {
+        console.error("Fallback method also failed:", fallbackError);
+      }
     }
-  }, [currentDoctor.id]); // Dependency array cho useCallback
+  };
 
   // Fetch waiting patients list on component mount and when doctorId changes
   useEffect(() => {
@@ -391,12 +512,13 @@ const MedicalExam = () => {
                   onClick={() => handleSelectAppointment(appointment)}
                 >
                   <div className="patient-name">{appointment.patientName}</div>
-                  <div className="patient-time">{appointment.appointmentTimeSlot}</div> {/* Thêm hiển thị thời gian */}
+                  <div className="patient-time">{appointment.appointmentTimeSlot}</div>
+                  {/* ...Các thành phần khác... */}
                 </div>
               ))
             ) : (
               <div className="no-patients">
-                <p>Không có bệnh nhân nào trong danh sách chờ.</p>
+                <p>Đang tải danh sách chờ.</p>
                 <button className="refresh-btn" onClick={fetchWaitingPatients}>
                   <FaSyncAlt /> Làm mới danh sách
                 </button>

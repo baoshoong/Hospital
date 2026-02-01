@@ -49,6 +49,17 @@
   color: #333;
 }
 
+/* CSS cho phần thông tin bệnh nhân */
+.patient-info-section {
+  background-color: #e6f7ff;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); 
+}
+.patient-avatar {
+  margin-right: 100px;
+}
+
 .loading-container {
   display: flex;
   flex-direction: column;
@@ -108,6 +119,8 @@
   padding: 20px;
   background: linear-gradient(135deg, #e6f7ff 0%, #d1f0ff 100%);
   border-bottom: 1px solid #e2e8f0;
+  justify-content: center; 
+  align-items: flex-end; 
 }
 
 .patient-avatar {
@@ -117,8 +130,9 @@
   border-radius: 10px;
   border: 3px solid white;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  margin-right: 20px;
+  margin-right: 50px;
   flex-shrink: 0;
+  align-self: center; 
 }
 
 .patient-avatar img {
@@ -128,26 +142,32 @@
 }
 
 .patient-details {
-  flex: 1;
+  flex: 0 1 auto; /* Cho phép co lại nhưng không giãn ra quá mức */
+  max-width: 450px; /* Giới hạn chiều rộng để tập trung thông tin */
 }
 
 .patient-details h2 {
   margin-top: 0;
-  margin-bottom: 10px;
+  margin-bottom: 15px;
   color: #2d3748;
   font-size: 1.5rem;
+  text-align: center; /* Căn giữa tên bệnh nhân */
 }
 
 .patient-details p {
-  margin: 5px 0;
+  margin: 6px 0;
   color: #4a5568;
   font-size: 0.95rem;
   line-height: 1.5;
+  display: flex; /* Để label và giá trị nằm cùng 1 dòng */
 }
 
 .patient-details strong {
   font-weight: 600;
   color: #2d3748;
+  width: 120px; /* Chiều rộng cố định cho label */
+  flex-shrink: 0; /* Không co lại khi không gian hạn chế */
+  text-align: left; /* Căn trái các nhãn */
 }
 
 .examination-controls {
@@ -582,12 +602,22 @@
   .patient-info-section {
     flex-direction: column;
     align-items: center;
-    text-align: center;
   }
   
   .patient-avatar {
     margin-right: 0;
     margin-bottom: 15px;
+    align-self: center; /* Căn giữa avatar trên mobile */
+  }
+  
+  .patient-details p {
+    flex-direction: column; /* Nhãn và giá trị xếp dọc trên mobile */
+    align-items: flex-start; /* Căn trái text */
+  }
+  
+  .patient-details strong {
+    margin-bottom: 3px; /* Khoảng cách giữa nhãn và giá trị */
+    width: auto; /* Không cần chiều rộng cố định nữa */
   }
   
   .examination-controls {

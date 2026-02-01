@@ -462,7 +462,6 @@ body, html {
   background-color: white;
   padding: 20px;
   border-radius: 16px;
-  color: #333;
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.06);
   display: flex;
   flex-direction: column;
@@ -471,6 +470,8 @@ body, html {
   overflow: hidden;
   position: relative;
   height: 100%;
+  width: 100%; /* Đảm bảo chiều rộng đồng nhất */
+  box-sizing: border-box; /* Đảm bảo padding không làm thay đổi kích thước */
 }
 
 .patient-card::before {
@@ -492,12 +493,11 @@ body, html {
 
 .card-header {
   display: flex;
-  gap: 15px;
-  margin-bottom: 15px;
-  align-items: flex-start;
-  flex: 1;
   flex-direction: column;
   align-items: center;
+  width: 100%;
+  margin-bottom: 15px;
+  text-align: center; /* Căn giữa text */
 }
 
 .card-header .patient-image {
@@ -507,8 +507,8 @@ body, html {
   object-fit: cover;
   border: 3px solid #e8f4f4;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
-  transition: transform 0.3s ease;
   margin-bottom: 10px;
+  flex-shrink: 0; /* Không co lại */
 }
 
 .patient-card:hover .patient-image {
@@ -543,6 +543,7 @@ body, html {
 .patient-info p {
   margin: 8px 0;
   display: flex;
+  width: 100%;
   justify-content: flex-start;
   align-items: center;
 }
@@ -561,20 +562,21 @@ body, html {
 }
 
 .patient-info strong {
-  color: #333;
+   width: 110px;
+  flex-shrink: 0;
   font-size: 13px;
+  color: #333;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  display: inline-block;
-  width: 110px;
   font-weight: 600;
   margin-right: 5px;
-  flex-shrink: 0;
 }
 
 .patient-info span {
   flex: 1;
   word-wrap: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Special handling for patient ID - keep it truncated */
@@ -585,14 +587,19 @@ body, html {
 }
 
 .card-actions {
+  margin-top: auto; /* Đẩy xuống dưới cùng */
+  padding-top: 15px;
+  border-top: 1px solid #f0f0f0;
   display: flex;
   justify-content: center;
-  margin-top: 15px;
-  flex-wrap: wrap;
-  padding-top: 15px;
-  margin-top: auto;
-  border-top: 1px solid #f0f0f0;
   gap: 10px;
+  width: 100%;
+}
+
+.card-actions button {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .history-button {

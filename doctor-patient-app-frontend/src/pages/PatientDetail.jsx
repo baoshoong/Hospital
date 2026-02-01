@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { FaArrowLeft, FaFileMedical, FaUserMd, FaCalendarAlt } from "react-icons/fa";
-import "./patientDetail.css";
+// import "./patientDetail.css";
 
 function PatientDetail() {
   const { patientId } = useParams();

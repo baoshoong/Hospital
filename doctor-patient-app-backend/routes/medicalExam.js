@@ -114,59 +114,57 @@ router.get('/waiting-patients', async (req, res) => {
       return res.status(400).json({ success: false, error: "Missing doctor ID." });
     }
 
+    // Lấy danh sách bệnh nhân đang chờ
     const snapshot = await db.collection('HisSchedule')
       .where('doctorID', '==', doctorId)
       .where('status', '==', 'wait')
-      .orderBy("examinationDate", "asc")
-      .orderBy("timeOrder", "asc")
+      // Không sắp xếp examinationDate ở đây để có thể lấy tất cả các lịch chờ
       .get();
 
+    // Xử lý danh sách bệnh nhân
     const waitingPatientsPromises = snapshot.docs.map(async (doc) => {
       const appointment = {
         id: doc.id,
         ...doc.data()
       };
 
-      let appointmentDate = new Date();
-      if (appointment.examinationDate && appointment.examinationDate.toDate && typeof appointment.examinationDate.toDate === 'function') {
-        // Firebase Timestamp.toDate() trả về Date object ở múi giờ cục bộ của server.
-        // Chúng ta sẽ điều chỉnh nó để hiển thị theo UTC+7
-        const dateFromFirestore = appointment.examinationDate.toDate();
-        const utcTime = Date.UTC(dateFromFirestore.getUTCFullYear(), dateFromFirestore.getUTCMonth(), dateFromFirestore.getUTCDate(),
-          dateFromFirestore.getUTCHours(), dateFromFirestore.getUTCMinutes(), dateFromFirestore.getUTCSeconds(), dateFromFirestore.getUTCMilliseconds());
-        appointmentDate = new Date(utcTime + UTC_PLUS_7_OFFSET_MS); // Đây là Date object đại diện cho thời điểm ở UTC+7
-      } else if (typeof appointment.examinationDate === 'number') {
-        const dateFromNumber = new Date(appointment.examinationDate);
-        const utcTime = Date.UTC(dateFromNumber.getUTCFullYear(), dateFromNumber.getUTCMonth(), dateFromNumber.getUTCDate(),
-          dateFromNumber.getUTCHours(), dateFromNumber.getUTCMinutes(), dateFromNumber.getUTCSeconds(), dateFromNumber.getUTCMilliseconds());
-        appointmentDate = new Date(utcTime + UTC_PLUS_7_OFFSET_MS);
-      } else if (appointment.examinationDate instanceof Date) {
-        const dateFromObject = appointment.examinationDate;
-        const utcTime = Date.UTC(dateFromObject.getUTCFullYear(), dateFromObject.getUTCMonth(), dateFromObject.getUTCDate(),
-          dateFromObject.getUTCHours(), dateFromObject.getUTCMinutes(), dateFromObject.getUTCSeconds(), dateFromObject.getUTCMilliseconds());
-        appointmentDate = new Date(utcTime + UTC_PLUS_7_OFFSET_MS);
-      } else {
-        try {
-          const dateFromString = new Date(appointment.examinationDate);
-          const utcTime = Date.UTC(dateFromString.getUTCFullYear(), dateFromString.getUTCMonth(), dateFromString.getUTCDate(),
-            dateFromString.getUTCHours(), dateFromString.getUTCMinutes(), dateFromString.getUTCSeconds(), dateFromString.getUTCMilliseconds());
-          appointmentDate = new Date(utcTime + UTC_PLUS_7_OFFSET_MS);
-        } catch (e) {
-          console.error(`Could not convert examinationDate to Date: ${appointment.examinationDate}`, e);
+      // Xử lý timeSlot từ chuỗi hoặc từ examinationDate
+      let timeSlot = "00:00"; // Giá trị mặc định
+      
+      // 1. Ưu tiên lấy từ trường timeSlot nếu đã được lưu dưới dạng chuỗi
+      if (typeof appointment.timeSlot === 'string' && appointment.timeSlot.match(/^\d{1,2}:\d{2}$/)) {
+        timeSlot = appointment.timeSlot;
+      } 
+      // 2. Nếu timeSlot là số, chuyển đổi thành chuỗi giờ:phút
+      else if (typeof appointment.timeSlot === 'number') {
+        const hours = Math.floor(appointment.timeSlot / 60);
+        const minutes = appointment.timeSlot % 60;
+        timeSlot = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+      }
+      // 3. Nếu không có timeSlot, sử dụng examinationDate
+      else if (appointment.examinationDate) {
+        let appointmentDate = new Date();
+        if (appointment.examinationDate.toDate && typeof appointment.examinationDate.toDate === 'function') {
+          appointmentDate = appointment.examinationDate.toDate();
+        } else if (typeof appointment.examinationDate === 'number') {
+          appointmentDate = new Date(appointment.examinationDate);
+        } else if (appointment.examinationDate instanceof Date) {
+          appointmentDate = appointment.examinationDate;
         }
+
+        // Lấy giờ và phút từ timestamp và chuyển thành chuỗi "HH:MM"
+        const hours = appointmentDate.getHours();
+        const minutes = appointmentDate.getMinutes();
+        timeSlot = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
       }
 
-      if (!isNaN(appointmentDate.getTime())) {
-        appointment.appointmentTimeSlot = appointmentDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-      } else {
-        appointment.appointmentTimeSlot = String(appointment.timeSlot || 'N/A');
-      }
+      // Lưu timeSlot vào appointment để sử dụng cho sắp xếp
+      appointment.appointmentTimeSlot = timeSlot;
 
+      // Lấy thông tin của bệnh nhân
       const patientId = appointment.parentId || appointment.patientID;
-
       if (patientId) {
         appointment.patientId = patientId;
-        // Gọi hàm mới để lấy thông tin profile với logic ưu tiên (chỉ mảng hoặc trường trực tiếp)
         const { patientData, healthProfileData } = await getPatientProfileData(patientId);
 
         appointment.patientName = patientData.fullName || "Không có tên";
@@ -193,30 +191,28 @@ router.get('/waiting-patients', async (req, res) => {
     });
 
     const waitingPatients = await Promise.all(waitingPatientsPromises);
-
     const validWaitingPatients = waitingPatients.filter(p => p.patientId && p.patientName !== "Không có ID bệnh nhân");
 
+    // Sắp xếp theo timeSlot - Chuyển các chuỗi thời gian thành số phút kể từ nửa đêm để so sánh
     validWaitingPatients.sort((a, b) => {
-      const timeA = String(a.appointmentTimeSlot || '00:00');
-      const timeB = String(b.appointmentTimeSlot || '00:00');
-
-      const [hoursA, minutesA] = timeA.split(':').map(Number);
-      const [hoursB, minutesB] = timeB.split(':').map(Number);
-
-      if (hoursA !== hoursB) {
-        return hoursA - hoursB;
-      }
+      const timeToMinutes = (timeStr) => {
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        return hours * 60 + minutes;
+      };
+      
+      const minutesA = timeToMinutes(a.appointmentTimeSlot || '00:00');
+      const minutesB = timeToMinutes(b.appointmentTimeSlot || '00:00');
+      
       return minutesA - minutesB;
     });
 
-    const responseDate = date || getNowInUTCPlus7().toISOString().split('T')[0].substring(0, 10); // Lấy phần YYYY-MM-DD
+    const responseDate = date || getNowInUTCPlus7().toISOString().split('T')[0].substring(0, 10);
 
     res.json({
       success: true,
       date: responseDate,
       waitingPatients: validWaitingPatients
     });
-
   } catch (error) {
     console.error("Error fetching waiting patients:", error);
     if (!res.headersSent) {
